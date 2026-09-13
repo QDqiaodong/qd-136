@@ -1,0 +1,38 @@
+server:
+  port: 8146
+
+spring:
+  application:
+    name: surf-equipment-system
+  
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3362/surf_equipment?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: admin
+    password: password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      initial-size: 5
+      min-idle: 5
+      max-active: 20
+      max-wait: 60000
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+  
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6435
+      timeout: 10000ms
+
+logging:
+  level:
+    com.surf: DEBUG
+    org.hibernate.SQL: DEBUG
