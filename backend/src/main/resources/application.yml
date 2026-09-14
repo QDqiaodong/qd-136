@@ -36,3 +36,18 @@ logging:
   level:
     com.surf: DEBUG
     org.hibernate.SQL: DEBUG
+
+# 角色访问控制
+# DIRECTOR 馆长：可见并操作全部档位/设备
+# COACH    浪道教练：仅可查看并调整授权档位上的防滑扶手和缓冲挡垫
+surf:
+  security:
+    # 未携带 X-Role 请求头时的兜底角色（安全默认：教练）
+    default-role: COACH
+    # 教练被授权的浪高档位编码（高浪 HIGH 不在授权范围内，用于验证越权拦截）
+    coach-authorized-wave-levels:
+      - LOW
+      - MEDIUM
+    auxiliary-equipment-types:
+      - 防滑扶手
+      - 缓冲挡垫

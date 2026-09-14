@@ -1,11 +1,21 @@
 import axios from 'axios'
 
+const ROLE_STORAGE_KEY = 'surf.current-role'
+
 const instance = axios.create({
   baseURL: '/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
   }
+})
+
+// 每个请求都带上当前角色头，后端据此做最终鉴权与范围收窄
+instance.interceptors.request.use((config) => {
+  const role = localStorage.getItem(ROLE_STORAGE_KEY) || 'DIRECTOR'
+  config.headers = config.headers || {}
+  config.headers['X-Role'] = role
+  return config
 })
 
 instance.interceptors.response.use(
@@ -16,6 +26,11 @@ instance.interceptors.response.use(
     return Promise.reject(response.data)
   },
   (error) => {
+    // HTTP 错误（如 403）时，把后端 ApiResponse 的 message 透传给调用方
+    const body = error.response?.data
+    if (body && typeof body === 'object' && 'message' in body) {
+      return Promise.reject(body)
+    }
     return Promise.reject(error)
   }
 )
@@ -100,6 +115,26 @@ export interface WaveLevelStatisticsDTO {
   equipmentList: EquipmentInfoDTO[]
 }
 
+export interface BindingStatus {
+  equipmentId: number
+  equipmentCode: string
+  equipmentName: string
+  equipmentType: string
+  location: string
+  bindingId: number
+  waveLevelCode: string
+  waveLevelName: string
+  bindingType: string
+  effectiveDate: string
+}
+
+export interface AuthMe {
+  role: 'DIRECTOR' | 'COACH'
+  roleName: string
+  authorizedWaveLevelCodes: string[]
+  auxiliaryEquipmentTypes: string[]
+}
+
 export const equipmentApi = {
   getAll: () => instance.get<Equipment[]>('/equipment'),
   getById: (id: number) => instance.get<Equipment>(`/equipment/${id}`),
@@ -133,7 +168,19 @@ export const bindingApi = {
   getBindingHistory: (equipmentId: number) =>
     instance.get<EquipmentWaveLevel[]>(`/binding/history/${equipmentId}`),
   getAdjustRecords: (equipmentId?: number) =>
-    instance.get<EquipmentAdjustRecord[]>('/binding/adjust-records', { params: { equipmentId } })
+    instance.get<EquipmentAdjustRecord[]>('/binding/adjust-records', { params: { equipmentId } }),
+  /** 服务端按角色收窄后的“绑定状态”列表：教练仅见授权档位上的防滑扶手/缓冲挡垫 */
+  getActiveBindings: () =>
+    instance.get<BindingStatus[]>('/binding/active-bindings'),
+  /** 服务端按角色收窄后的可绑定设备下拉数据 */
+  getBindableEquipments: () =>
+    instance.get<Equipment[]>('/binding/bindable-equipments')
+}
+
+export const authApi = {
+  /** 显式指定角色获取授权范围（角色来自本地持久化，通过 X-Role 头传后端） */
+  getMe: (_role?: 'DIRECTOR' | 'COACH') =>
+    instance.get<AuthMe>('/auth/me')
 }
 
 export const statisticsApi = {
