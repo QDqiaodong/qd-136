@@ -36,6 +36,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private void initWaveLevels() {
         if (waveLevelRepository.count() > 0) {
+            backfillMinBufferThickness();
             return;
         }
         WaveLevel low = WaveLevel.builder()
@@ -56,11 +57,26 @@ public class DataInitializer implements CommandLineRunner {
                 .levelCode("HIGH")
                 .levelName("高浪")
                 .description("适合高级冲浪者的高浪档位")
+                // 高浪冲击大，缓冲挡垫厚度不得低于 10
+                .minBufferThickness(new BigDecimal("10.0"))
                 .sortOrder(3)
                 .build();
 
         waveLevelRepository.saveAll(Arrays.asList(low, medium, high));
         log.info("Initialized wave levels: LOW, MEDIUM, HIGH");
+    }
+
+    /**
+     * 旧库升级回填：已存在的浪高档位没有厚度下限时补齐，
+     * 保证重启后高浪档位的缓冲厚度校验同样生效。
+     */
+    private void backfillMinBufferThickness() {
+        WaveLevel high = waveLevelRepository.findByLevelCode("HIGH").orElse(null);
+        if (high != null && high.getMinBufferThickness() == null) {
+            high.setMinBufferThickness(new BigDecimal("10.0"));
+            waveLevelRepository.save(high);
+            log.info("Backfilled HIGH min buffer thickness: 10.0");
+        }
     }
 
     /**
@@ -80,6 +96,9 @@ public class DataInitializer implements CommandLineRunner {
         seed("FS-MED-01", "中浪区防滑扶手", "防滑扶手", null, "L2", "中浪区左侧",
                 level("MEDIUM"), "INITIAL");
         seed("HC-MED-01", "中浪区缓冲挡垫", "缓冲挡垫", new BigDecimal("8.0"), "L", "中浪区末端",
+                level("MEDIUM"), "INITIAL");
+        // 厚度 10.0 恰达高浪下限，绑到中浪，验收时用于验证“达到下限允许改绑高浪”
+        seed("HC-MED-02", "中浪区加厚缓冲挡垫", "缓冲挡垫", new BigDecimal("10.0"), "XL", "中浪区末端",
                 level("MEDIUM"), "INITIAL");
 
         seed("FS-HIGH-01", "高浪区防滑扶手", "防滑扶手", null, "L3", "高浪区左侧",

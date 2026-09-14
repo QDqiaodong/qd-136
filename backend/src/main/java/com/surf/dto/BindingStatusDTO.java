@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -22,6 +23,7 @@ public class BindingStatusDTO {
     private String equipmentCode;
     private String equipmentName;
     private String equipmentType;
+    private BigDecimal bufferThickness;
     private String location;
 
     // 当前生效绑定信息

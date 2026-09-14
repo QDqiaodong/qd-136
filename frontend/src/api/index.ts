@@ -61,6 +61,8 @@ export interface WaveLevel {
   levelCode: string
   levelName: string
   description: string
+  /** 缓冲挡垫绑定到本档位所需的最小缓冲厚度，null 表示不限制 */
+  minBufferThickness: number | null
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -120,6 +122,7 @@ export interface BindingStatus {
   equipmentCode: string
   equipmentName: string
   equipmentType: string
+  bufferThickness: number | null
   location: string
   bindingId: number
   waveLevelCode: string

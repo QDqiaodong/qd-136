@@ -36,6 +36,7 @@ public class EquipmentWaveLevelService {
     private final WaveLevelRepository waveLevelRepository;
     private final EquipmentAdjustRecordRepository equipmentAdjustRecordRepository;
     private final AccessControlService accessControlService;
+    private final BufferThicknessRuleService bufferThicknessRuleService;
 
     @Transactional
     public EquipmentWaveLevel bindWaveLevel(WaveLevelBindingDTO dto) {
@@ -47,6 +48,9 @@ public class EquipmentWaveLevelService {
 
         // 角色强制鉴权：教练只能把辅助设备绑定到授权档位，越权直接 403
         accessControlService.assertCanBind(equipment, waveLevel.getLevelCode());
+
+        // 适浪厚度校验：缓冲挡垫厚度不达标档位下限时直接拦截，绑定不会落库
+        bufferThicknessRuleService.assertThicknessSatisfied(equipment, waveLevel);
 
         EquipmentWaveLevel binding = EquipmentWaveLevel.builder()
                 .equipmentId(equipment.getId())
@@ -76,6 +80,9 @@ public class EquipmentWaveLevelService {
 
         // 角色强制鉴权：当前档位与目标档位都必须在教练授权范围内，防止借调整改动未授权档位
         accessControlService.assertCanAdjust(equipment, currentBinding.orElse(null), newWaveLevel.getLevelCode());
+
+        // 适浪厚度校验：必须在旧绑定失效之前拦截，厚度不足时既不会绑上目标档位，也不会动原绑定
+        bufferThicknessRuleService.assertThicknessSatisfied(equipment, newWaveLevel);
 
         String previousLevelCode = null;
         String previousLevelName = null;
@@ -203,6 +210,7 @@ public class EquipmentWaveLevelService {
                     .equipmentCode(equipment.getEquipmentCode())
                     .equipmentName(equipment.getEquipmentName())
                     .equipmentType(equipment.getEquipmentType())
+                    .bufferThickness(equipment.getBufferThickness())
                     .location(equipment.getLocation())
                     .bindingId(binding.getId())
                     .waveLevelCode(binding.getWaveLevelCode())

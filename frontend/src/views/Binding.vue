@@ -34,7 +34,7 @@
                     <el-option
                       v-for="eq in equipments"
                       :key="eq.id"
-                      :label="`${eq.equipmentCode} - ${eq.equipmentName}`"
+                      :label="equipmentOptionLabel(eq)"
                       :value="eq.id"
                     />
                   </el-select>
@@ -49,6 +49,9 @@
                     />
                   </el-select>
                   <div v-if="coachMode" class="field-hint">仅显示已授权档位</div>
+                  <div v-if="bindThicknessHint" class="field-hint thickness-hint">
+                    {{ bindThicknessHint }}
+                  </div>
                 </el-form-item>
                 <el-form-item label="绑定类型">
                   <el-select v-model="bindForm.bindingType">
@@ -85,6 +88,9 @@
                     />
                   </el-select>
                   <div v-if="coachMode" class="field-hint">仅可调整到已授权档位</div>
+                  <div v-if="adjustThicknessHint" class="field-hint thickness-hint">
+                    {{ adjustThicknessHint }}
+                  </div>
                 </el-form-item>
                 <el-form-item label="调整原因">
                   <el-input v-model="adjustForm.adjustReason" type="textarea" :rows="3" />
@@ -113,6 +119,11 @@
                   <el-tag :type="scope.row.equipmentType === '防滑扶手' ? 'primary' : 'success'">
                     {{ scope.row.equipmentType }}
                   </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="缓冲厚度" width="100">
+                <template #default="scope">
+                  {{ scope.row.bufferThickness != null ? `${scope.row.bufferThickness}cm` : '-' }}
                 </template>
               </el-table-column>
               <el-table-column prop="waveLevelCode" label="档位编码" width="100" />
@@ -169,6 +180,9 @@ import {
 import { loadAuth, isCoach, canAccessWaveLevel } from '@/auth'
 import { ElMessage } from 'element-plus'
 
+// 受适浪厚度规则约束的设备类型，与后端 BufferThicknessRuleService.BUFFER_PAD_TYPE 保持一致
+const BUFFER_PAD_TYPE = '缓冲挡垫'
+
 const activeTab = ref('bind')
 // 初始绑定可选设备：由后端按角色收窄（教练仅防滑扶手/缓冲挡垫）
 const equipments = ref<Equipment[]>([])
@@ -212,6 +226,63 @@ const unauthorizedLevelNames = computed(() =>
     .map((wl) => wl.levelName)
     .join('、') || '无'
 )
+
+// 设备下拉补充厚度信息，馆长挑选缓冲挡垫时能直接看到适浪厚度
+const equipmentOptionLabel = (eq: Equipment) => {
+  const thickness =
+    eq.equipmentType === BUFFER_PAD_TYPE && eq.bufferThickness != null
+      ? `（缓冲厚度 ${eq.bufferThickness}cm）`
+      : ''
+  return `${eq.equipmentCode} - ${eq.equipmentName}${thickness}`
+}
+
+/**
+ * 前端适浪厚度预校验：缓冲挡垫绑到配置了厚度下限的档位时，厚度必须达标。
+ * 返回错误文案；满足/不适用时返回 null。最终拦截以后端为准。
+ */
+const checkThickness = (
+  equipmentType: string | undefined,
+  thickness: number | null | undefined,
+  levelCode: string
+): string | null => {
+  if (equipmentType !== BUFFER_PAD_TYPE) {
+    return null
+  }
+  const target = waveLevels.value.find((wl) => wl.levelCode === levelCode)
+  if (!target || target.minBufferThickness == null) {
+    return null
+  }
+  if (thickness == null || thickness < target.minBufferThickness) {
+    return `厚度不足：该缓冲挡垫的缓冲厚度为${
+      thickness == null ? '未登记' : ` ${thickness}cm`
+    }，未达到${target.levelName}档位的厚度下限 ${target.minBufferThickness}cm，不能绑定到该档位`
+  }
+  return null
+}
+
+// 初始绑定区：选中设备 + 档位后的厚度提示
+const bindThicknessHint = computed(() => {
+  if (bindForm.equipmentId == null || !bindForm.waveLevelCode) {
+    return null
+  }
+  const eq = equipments.value.find((e) => e.id === bindForm.equipmentId)
+  if (!eq) {
+    return null
+  }
+  return checkThickness(eq.equipmentType, eq.bufferThickness, bindForm.waveLevelCode)
+})
+
+// 档位调整区：选中设备 + 新档位后的厚度提示
+const adjustThicknessHint = computed(() => {
+  if (adjustForm.equipmentId == null || !adjustForm.newWaveLevelCode) {
+    return null
+  }
+  const eq = bindingStatus.value.find((b) => b.equipmentId === adjustForm.equipmentId)
+  if (!eq) {
+    return null
+  }
+  return checkThickness(eq.equipmentType, eq.bufferThickness, adjustForm.newWaveLevelCode)
+})
 
 const fetchEquipments = async () => {
   try {
@@ -269,6 +340,14 @@ const doBind = async () => {
     ElMessage.error('没有权限：该浪高档位未授权给当前教练')
     return
   }
+  const eq = equipments.value.find((e) => e.id === bindForm.equipmentId)
+  const thicknessError = eq
+    ? checkThickness(eq.equipmentType, eq.bufferThickness, bindForm.waveLevelCode)
+    : null
+  if (thicknessError) {
+    ElMessage.error(thicknessError)
+    return
+  }
 
   try {
     await bindingApi.bind({
@@ -293,6 +372,14 @@ const doAdjust = async () => {
   }
   if (isCoach() && !canAccessWaveLevel(adjustForm.newWaveLevelCode)) {
     ElMessage.error('没有权限：目标浪高档位未授权给当前教练')
+    return
+  }
+  const eq = bindingStatus.value.find((b) => b.equipmentId === adjustForm.equipmentId)
+  const thicknessError = eq
+    ? checkThickness(eq.equipmentType, eq.bufferThickness, adjustForm.newWaveLevelCode)
+    : null
+  if (thicknessError) {
+    ElMessage.error(thicknessError)
     return
   }
 
@@ -341,6 +428,10 @@ onMounted(async () => {
     color: #e6a23c;
     line-height: 1.4;
     margin-top: 4px;
+  }
+
+  .thickness-hint {
+    color: #f56c6c;
   }
 
   .page-tabs {

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -30,7 +31,14 @@ public class WaveLevel {
     
     @Column(name = "description", length = 200)
     private String description;
-    
+
+    /**
+     * 缓冲挡垫绑定到本档位所需的最小缓冲厚度。
+     * null 表示该档位不限制缓冲厚度；高浪等高冲击档位应配置厚度下限。
+     */
+    @Column(name = "min_buffer_thickness")
+    private BigDecimal minBufferThickness;
+
     @Column(name = "sort_order", nullable = false)
     @Builder.Default
     private Integer sortOrder = 0;
