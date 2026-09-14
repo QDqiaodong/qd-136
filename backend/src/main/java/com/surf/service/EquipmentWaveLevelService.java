@@ -52,6 +52,16 @@ public class EquipmentWaveLevelService {
         // 适浪厚度校验：缓冲挡垫厚度不达标档位下限时直接拦截，绑定不会落库
         bufferThicknessRuleService.assertThicknessSatisfied(equipment, waveLevel);
 
+        // 同一台设备同一时刻只允许一个生效档位：先取出当前仍生效的旧绑定
+        List<EquipmentWaveLevel> activeBindings = equipmentWaveLevelRepository
+                .findAllByEquipmentIdAndExpireDateIsNull(equipment.getId());
+        boolean alreadyOnTarget = activeBindings.stream()
+                .anyMatch(b -> b.getWaveLevelCode().equals(waveLevel.getLevelCode()));
+        if (alreadyOnTarget) {
+            throw new IllegalArgumentException("设备当前已绑定在该档位，无需重复绑定");
+        }
+
+        // 先做新档生效：新绑定落库，设备在新档位立即可用
         EquipmentWaveLevel binding = EquipmentWaveLevel.builder()
                 .equipmentId(equipment.getId())
                 .waveLevelId(waveLevel.getId())
@@ -62,6 +72,15 @@ public class EquipmentWaveLevelService {
                 .build();
 
         EquipmentWaveLevel saved = equipmentWaveLevelRepository.save(binding);
+
+        // 再做旧档失效：打上失效时间，旧档位名单里不再出现这台设备
+        for (EquipmentWaveLevel stale : activeBindings) {
+            stale.setExpireDate(LocalDateTime.now());
+            equipmentWaveLevelRepository.save(stale);
+            log.info("[{}] Expired previous binding of equipment {} on wave level {}",
+                    accessControlService.currentRole(), equipment.getEquipmentCode(), stale.getWaveLevelCode());
+        }
+
         log.info("[{}] Bound equipment {} to wave level {}",
                 accessControlService.currentRole(), equipment.getEquipmentCode(), waveLevel.getLevelCode());
         return saved;

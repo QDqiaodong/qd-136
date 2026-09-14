@@ -14,6 +14,8 @@ import java.util.Optional;
 public interface EquipmentWaveLevelRepository extends JpaRepository<EquipmentWaveLevel, Long> {
     
     Optional<EquipmentWaveLevel> findByEquipmentIdAndExpireDateIsNull(Long equipmentId);
+
+    List<EquipmentWaveLevel> findAllByEquipmentIdAndExpireDateIsNull(Long equipmentId);
     
     List<EquipmentWaveLevel> findByWaveLevelCodeAndExpireDateIsNull(String waveLevelCode);
     
