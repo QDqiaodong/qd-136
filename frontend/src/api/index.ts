@@ -191,3 +191,70 @@ export const statisticsApi = {
     instance.get<WaveLevelStatisticsDTO[]>('/statistics/wave-level', { params: { waveLevelCode } }),
   getOverview: () => instance.get<{ totalEquipment: number; totalWaveLevel: number; totalBinding: number }>('/statistics/overview')
 }
+
+// ===== 开浪前点检盘点（馆长） =====
+
+export interface PreWaveInspection {
+  id: number
+  inspectionDate: string
+  equipmentId: number
+  equipmentCode: string
+  equipmentName: string
+  equipmentType: string
+  /** 握把打滑次数（次） */
+  slipCount: number
+  /** 挡垫移位（厘米） */
+  shiftCm: number
+  remark: string | null
+  updatedAt: string
+}
+
+export interface PreWaveInspectionSummary {
+  inspectionDate: string
+  inspectedCount: number
+  /** 今晚握把打滑次数合计 */
+  totalSlipCount: number
+  /** 今晚挡垫移位合计（厘米） */
+  totalShiftCm: number
+}
+
+export interface PreWaveReconcileResult {
+  sheetSlipCount: number
+  onSiteSlipCount: number
+  slipDiff: number
+  slipMatched: boolean
+  sheetShiftCm: number
+  onSiteShiftCm: number
+  shiftDiff: number
+  shiftMatched: boolean
+  balanced: boolean
+}
+
+export interface PreWaveInspectionSubmitPayload {
+  equipmentId: number
+  slipCount: number
+  shiftCm: number
+  remark?: string
+}
+
+export interface PreWaveInspectionUpsertResult {
+  /** true 表示同一台设备今晚已点过，本次为复点覆盖（合计只算一次） */
+  reInspected: boolean
+}
+
+export const inspectionApi = {
+  /** 今晚点检明细 */
+  listToday: () => instance.get<PreWaveInspection[]>('/inspection/today'),
+  /** 今晚可点检的入浪辅助设备 */
+  getInspectableEquipments: () => instance.get<Equipment[]>('/inspection/equipments'),
+  /** 今晚打滑合计、移位合计 */
+  getSummary: () => instance.get<PreWaveInspectionSummary>('/inspection/summary'),
+  /** 录入 / 复点（同设备同晚只保留一条） */
+  submit: (data: PreWaveInspectionSubmitPayload) =>
+    instance.post<PreWaveInspectionUpsertResult>('/inspection', data),
+  /** 撤回一条点检记录 */
+  remove: (id: number) => instance.delete<void>(`/inspection/${id}`),
+  /** 与现场计数对账 */
+  reconcile: (data: { onSiteSlipCount: number; onSiteShiftCm: number }) =>
+    instance.post<PreWaveReconcileResult>('/inspection/reconcile', data)
+}

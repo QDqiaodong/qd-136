@@ -29,6 +29,10 @@
           <i class="el-icon-data-line"></i>
           <span>统计看板</span>
         </el-menu-item>
+        <el-menu-item index="/inspection">
+          <i class="el-icon-circle-check"></i>
+          <span>开浪前点检</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
