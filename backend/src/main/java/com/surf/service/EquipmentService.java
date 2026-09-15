@@ -5,11 +5,13 @@ import com.surf.dto.EquipmentUpdateDTO;
 import com.surf.entity.Equipment;
 import com.surf.entity.EquipmentLoan;
 import com.surf.entity.EquipmentWaveLevel;
+import com.surf.repository.EquipmentAdjustRecordRepository;
 import com.surf.repository.EquipmentLoanRepository;
 import com.surf.repository.EquipmentRepository;
 import com.surf.repository.EquipmentWaveLevelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +30,7 @@ public class EquipmentService {
     private final EquipmentRepository equipmentRepository;
     private final EquipmentWaveLevelRepository equipmentWaveLevelRepository;
     private final EquipmentLoanRepository equipmentLoanRepository;
+    private final EquipmentAdjustRecordRepository equipmentAdjustRecordRepository;
     
     @Transactional
     public Equipment createEquipment(EquipmentCreateDTO dto) {
@@ -54,7 +57,7 @@ public class EquipmentService {
     public Equipment updateEquipment(Long id, EquipmentUpdateDTO dto) {
         Equipment equipment = equipmentRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("设备不存在"));
-        
+
         if (dto.getEquipmentName() != null) {
             equipment.setEquipmentName(dto.getEquipmentName());
         }
@@ -73,10 +76,58 @@ public class EquipmentService {
         if (dto.getRemark() != null) {
             equipment.setRemark(dto.getRemark());
         }
-        
+
+        // 改设备编号：领用台账、设备调整流水必须同事务跟着改成新号
+        String newCode = dto.getEquipmentCode() == null ? null : dto.getEquipmentCode().trim();
+        if (newCode != null) {
+            if (newCode.isEmpty()) {
+                throw new IllegalArgumentException("设备编号不能为空");
+            }
+            if (!newCode.equals(equipment.getEquipmentCode())) {
+                renameEquipmentCode(equipment, newCode);
+            }
+        }
+
         Equipment updated = equipmentRepository.save(equipment);
         log.info("Updated equipment: {}", updated.getEquipmentCode());
         return updated;
+    }
+
+    /**
+     * 改设备编号。新号被另一台在册设备占用时拦截并写明占用者，本台编号维持原样；
+     * 改号成功后，领用台账（含未还清的在借行）与设备调整流水同事务换成新号，
+     * 三处用同一个号，馆长对账才对得上；用旧号去两本账里再查不到这台设备。
+     */
+    private void renameEquipmentCode(Equipment equipment, String newCode) {
+        String oldCode = equipment.getEquipmentCode();
+
+        // 预检：新号已被另一台设备占用时直接拦截，报错写明被哪一台占着
+        equipmentRepository.findByEquipmentCode(newCode)
+                .filter(occupant -> !occupant.getId().equals(equipment.getId()))
+                .ifPresent(occupant -> {
+                    throw new IllegalArgumentException(occupiedMessage(newCode, oldCode, occupant));
+                });
+
+        equipment.setEquipmentCode(newCode);
+        try {
+            // 立即落库抢占新号：两人同时改同一个新号时，equipment_code 唯一约束只放行一台，
+            // 后提交的在 flush 时撞约束回滚，绝不允许两本档案共用一个号
+            equipmentRepository.saveAndFlush(equipment);
+        } catch (DataIntegrityViolationException e) {
+            throw new EquipmentCodeOccupiedException(newCode, oldCode);
+        }
+
+        // 两本账同步改号：未还清的在借行也一并改，不因还在借就留下旧号
+        int loanRows = equipmentLoanRepository.renameEquipmentCode(equipment.getId(), newCode);
+        int adjustRows = equipmentAdjustRecordRepository.renameEquipmentCode(equipment.getId(), newCode);
+        log.info("Renamed equipment code {} -> {}: {} loan rows, {} adjust records followed",
+                oldCode, newCode, loanRows, adjustRows);
+    }
+
+    /** 占用提示：写明新号被哪一台设备占着，并告知本台编号维持原样。 */
+    public static String occupiedMessage(String newCode, String oldCode, Equipment occupant) {
+        return "设备编号 " + newCode + " 已被 " + occupant.getEquipmentName()
+                + "（编号 " + occupant.getEquipmentCode() + "）占用，本台编号维持 " + oldCode;
     }
     
     @Transactional

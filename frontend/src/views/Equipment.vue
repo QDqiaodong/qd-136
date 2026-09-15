@@ -88,8 +88,11 @@
       width="500px"
     >
       <el-form :model="formData" label-width="100px">
-        <el-form-item label="设备编号" :required="!isEdit">
-          <el-input v-model="formData.equipmentCode" :disabled="isEdit" />
+        <el-form-item label="设备编号" required>
+          <el-input v-model="formData.equipmentCode" placeholder="设备编号，全馆唯一" />
+          <div v-if="isEdit && codeChanged" class="code-change-hint">
+            保存后领用台账、设备调整流水会同步改成新号；若新号已被其他设备占用将保存失败
+          </div>
         </el-form-item>
         <el-form-item label="设备名称" required>
           <el-input v-model="formData.equipmentName" />
@@ -145,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { computed, ref, reactive } from 'vue'
 import { equipmentApi, equipmentLoanApi, type Equipment } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -154,6 +157,8 @@ const searchKeyword = ref('')
 const searchType = ref('')
 const dialogVisible = ref(false)
 const isEdit = ref(false)
+// 编辑时打开对话框那一刻的原编号，用于判断本次是否改了号
+const originalCode = ref('')
 
 const formData = reactive({
   equipmentCode: '',
@@ -166,6 +171,10 @@ const formData = reactive({
 })
 
 let editId: number | null = null
+
+const codeChanged = computed(
+  () => isEdit.value && formData.equipmentCode.trim() !== originalCode.value
+)
 
 const formatTime = (value: string | null | undefined) => {
   if (!value) return ''
@@ -201,6 +210,7 @@ const fetchEquipments = async () => {
 const openAddDialog = () => {
   isEdit.value = false
   editId = null
+  originalCode.value = ''
   Object.assign(formData, {
     equipmentCode: '',
     equipmentName: '',
@@ -216,6 +226,7 @@ const openAddDialog = () => {
 const openEditDialog = (equipment: Equipment) => {
   isEdit.value = true
   editId = equipment.id
+  originalCode.value = equipment.equipmentCode
   Object.assign(formData, {
     equipmentCode: equipment.equipmentCode,
     equipmentName: equipment.equipmentName,
@@ -229,10 +240,14 @@ const openEditDialog = (equipment: Equipment) => {
 }
 
 const saveEquipment = async () => {
+  if (!formData.equipmentCode.trim()) {
+    ElMessage.warning('请填写设备编号')
+    return
+  }
   try {
     if (isEdit.value && editId) {
-      await equipmentApi.update(editId, formData)
-      ElMessage.success('设备更新成功')
+      await equipmentApi.update(editId, { ...formData, equipmentCode: formData.equipmentCode.trim() })
+      ElMessage.success(codeChanged.value ? '设备更新成功，领用台账与调整流水已同步改号' : '设备更新成功')
     } else {
       await equipmentApi.create(formData)
       ElMessage.success('设备添加成功')
@@ -240,7 +255,9 @@ const saveEquipment = async () => {
     dialogVisible.value = false
     fetchEquipments()
   } catch (error: any) {
+    // 新号被占用等拦截以后端为准，报错写明被哪一台占着；本台编号维持原样，刷新名单对齐
     ElMessage.error(error.message || '保存失败')
+    fetchEquipments()
   }
 }
 
@@ -353,6 +370,13 @@ fetchEquipments()
     margin-top: 4px;
     font-size: 12px;
     color: #909399;
+    line-height: 1.4;
+  }
+
+  .code-change-hint {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #e6a23c;
     line-height: 1.4;
   }
 }
