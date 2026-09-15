@@ -54,6 +54,28 @@ export interface Equipment {
   remark: string
   createdAt: string
   updatedAt: string
+  /** 是否仍在借（有未归还领用记录），由后端按领用台账回填 */
+  borrowed?: boolean
+  /** 当前借用人（当班教练），未在借为 null */
+  borrowedBy?: string | null
+  /** 领用时间，未在借为 null */
+  borrowedAt?: string | null
+  /** 当前在借领用记录 id，供发起归还 */
+  activeLoanId?: number | null
+}
+
+/** 领用台账一条记录：returnedAt 为 null 表示仍在借 */
+export interface EquipmentLoan {
+  id: number
+  equipmentId: number
+  equipmentCode: string
+  equipmentName: string
+  borrowedBy: string
+  borrowedAt: string
+  returnedAt: string | null
+  returnedBy: string | null
+  remark: string | null
+  createdAt: string
 }
 
 export interface WaveLevel {
@@ -147,6 +169,23 @@ export const equipmentApi = {
     instance.put<Equipment>(`/equipment/${id}`, data),
   delete: (id: number) => instance.delete(`/equipment/${id}`),
   getByType: (type: string) => instance.get<Equipment[]>(`/equipment/type/${type}`)
+}
+
+// ===== 设备领用 / 归还 =====
+// 在借状态以后端领用台账为唯一依据：未还清时 borrow 返回 400 拦截，归还后才可再借
+
+export const equipmentLoanApi = {
+  /** 登记领用（borrowerName 为当班教练姓名）；未还清时后端拒绝 */
+  borrow: (data: { equipmentId: number; borrowerName: string; remark?: string }) =>
+    instance.post<EquipmentLoan>('/equipment-loan/borrow', data),
+  /** 登记归还，设备随后可再次领用 */
+  returnEquipment: (equipmentId: number, operatorName?: string) =>
+    instance.post<EquipmentLoan>(`/equipment-loan/return/${equipmentId}`, { operatorName }),
+  /** 当前全部在借记录 */
+  getActiveLoans: () => instance.get<EquipmentLoan[]>('/equipment-loan/active'),
+  /** 某台设备的领用 / 归还流水 */
+  getHistory: (equipmentId: number) =>
+    instance.get<EquipmentLoan[]>(`/equipment-loan/history/${equipmentId}`)
 }
 
 export interface WaveLevelSavePayload {
