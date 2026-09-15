@@ -58,7 +58,7 @@
 
     <el-dialog
       :title="isEdit ? '编辑设备' : '添加设备'"
-      :visible.sync="dialogVisible"
+      v-model="dialogVisible"
       width="500px"
     >
       <el-form :model="formData" label-width="100px">

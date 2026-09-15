@@ -1,6 +1,7 @@
 package com.surf.controller;
 
 import com.surf.dto.ApiResponse;
+import com.surf.dto.WaveLevelSaveDTO;
 import com.surf.entity.WaveLevel;
 import com.surf.service.WaveLevelService;
 import lombok.RequiredArgsConstructor;
@@ -17,16 +18,16 @@ public class WaveLevelController {
     private final WaveLevelService waveLevelService;
     
     @PostMapping
-    public ResponseEntity<ApiResponse<WaveLevel>> create(@RequestBody WaveLevel waveLevel) {
-        WaveLevel created = waveLevelService.createWaveLevel(waveLevel);
+    public ResponseEntity<ApiResponse<WaveLevel>> create(@RequestBody WaveLevelSaveDTO dto) {
+        WaveLevel created = waveLevelService.createWaveLevel(dto);
         return ResponseEntity.ok(ApiResponse.success("浪高档位创建成功", created));
     }
-    
+
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<WaveLevel>> update(
-            @PathVariable Long id, 
-            @RequestBody WaveLevel waveLevel) {
-        WaveLevel updated = waveLevelService.updateWaveLevel(id, waveLevel);
+            @PathVariable Long id,
+            @RequestBody WaveLevelSaveDTO dto) {
+        WaveLevel updated = waveLevelService.updateWaveLevel(id, dto);
         return ResponseEntity.ok(ApiResponse.success("浪高档位更新成功", updated));
     }
     

@@ -149,12 +149,20 @@ export const equipmentApi = {
   getByType: (type: string) => instance.get<Equipment[]>(`/equipment/type/${type}`)
 }
 
+export interface WaveLevelSavePayload {
+  /** 档位代号，仅新增时生效；编辑时代号不可改 */
+  levelCode?: string
+  levelName: string
+  sortOrder: number | null
+  description: string
+}
+
 export const waveLevelApi = {
   getAll: () => instance.get<WaveLevel[]>('/wave-level'),
   getById: (id: number) => instance.get<WaveLevel>(`/wave-level/${id}`),
-  create: (data: Omit<WaveLevel, 'id' | 'createdAt' | 'updatedAt'>) =>
+  create: (data: WaveLevelSavePayload) =>
     instance.post<WaveLevel>('/wave-level', data),
-  update: (id: number, data: Partial<WaveLevel>) =>
+  update: (id: number, data: WaveLevelSavePayload) =>
     instance.put<WaveLevel>(`/wave-level/${id}`, data),
   delete: (id: number) => instance.delete(`/wave-level/${id}`)
 }

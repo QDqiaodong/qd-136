@@ -21,6 +21,10 @@
           <i class="el-icon-s-tools"></i>
           <span>设备管理</span>
         </el-menu-item>
+        <el-menu-item index="/wave-level">
+          <i class="el-icon-s-flag"></i>
+          <span>档位管理</span>
+        </el-menu-item>
         <el-menu-item index="/binding">
           <i class="el-icon-link"></i>
           <span>档位绑定</span>

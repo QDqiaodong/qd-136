@@ -17,6 +17,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/Equipment.vue')
   },
   {
+    path: '/wave-level',
+    name: 'WaveLevel',
+    component: () => import('@/views/WaveLevel.vue')
+  },
+  {
     path: '/binding',
     name: 'Binding',
     component: () => import('@/views/Binding.vue')
