@@ -30,6 +30,41 @@
       </div>
     </div>
 
+    <!-- 馆长交接班：今晚开了哪些浪高档、当班教练是谁 -->
+    <div class="wave-open-card">
+      <div class="card-header">
+        <span class="card-title">今晚开浪档位（{{ today }}）</span>
+        <el-tag v-if="savedAt" type="success" size="small" effect="plain">
+          已记录 · {{ savedAt }}
+        </el-tag>
+      </div>
+      <div class="wave-open-body">
+        <div class="wave-open-row">
+          <span class="row-label">开浪档位</span>
+          <el-checkbox-group v-model="openedLevels" class="level-checkbox-group">
+            <el-checkbox
+              v-for="level in waveLevels"
+              :key="level.levelCode"
+              :value="level.levelCode"
+            >
+              {{ level.levelName }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </div>
+        <div class="wave-open-row">
+          <span class="row-label">当班教练</span>
+          <el-input
+            v-model="coachName"
+            class="coach-input"
+            placeholder="请填写当班教练姓名"
+            clearable
+            maxlength="20"
+          />
+          <el-button type="primary" :loading="saving" @click="saveWaveOpen">保存记录</el-button>
+        </div>
+      </div>
+    </div>
+
     <div class="chart-card">
       <div class="card-header">
         <span class="card-title">浪高档位设备分布</span>
@@ -57,12 +92,85 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { statisticsApi, bindingApi, type EquipmentAdjustRecord } from '@/api'
+import { ElMessage } from 'element-plus'
+import { statisticsApi, bindingApi, waveLevelApi, type EquipmentAdjustRecord, type WaveLevel } from '@/api'
 
 const overview = ref({ totalEquipment: 0, totalWaveLevel: 0, totalBinding: 0 })
 const adjustRecords = ref<EquipmentAdjustRecord[]>([])
 const chartRef = ref<HTMLElement | null>(null)
 let chartInstance: echarts.ECharts | null = null
+
+// ===== 今晚开浪档位 / 当班教练（交接班记录，按晚存浏览器，关页再开仍在） =====
+const WAVE_OPEN_STORAGE_KEY = 'surf.wave-open'
+
+const today = new Date().toISOString().slice(0, 10)
+const waveLevels = ref<WaveLevel[]>([])
+const openedLevels = ref<string[]>([])
+const coachName = ref('')
+const saving = ref(false)
+const savedAt = ref('')
+
+interface WaveOpenRecord {
+  date: string
+  levelCodes: string[]
+  coachName: string
+  savedAt: string
+}
+
+const fetchWaveLevels = async () => {
+  try {
+    const res = await waveLevelApi.getAll()
+    waveLevels.value = [...res.data].sort((a, b) => a.sortOrder - b.sortOrder)
+  } catch (error) {
+    console.error('获取浪高档位失败:', error)
+  }
+}
+
+// 只读回当晚那条记录；隔天打开不会带出昨晚的勾选与教练
+const loadWaveOpenRecord = () => {
+  const raw = localStorage.getItem(WAVE_OPEN_STORAGE_KEY)
+  if (!raw) return
+  try {
+    const record = JSON.parse(raw) as WaveOpenRecord
+    if (record.date !== today) return
+    openedLevels.value = Array.isArray(record.levelCodes) ? record.levelCodes : []
+    coachName.value = record.coachName || ''
+    savedAt.value = record.savedAt || ''
+  } catch {
+    // 本地记录损坏时忽略，按未记录处理
+  }
+}
+
+const saveWaveOpen = () => {
+  if (openedLevels.value.length === 0) {
+    ElMessage.warning('请先勾选今晚开浪的档位')
+    return
+  }
+  const name = coachName.value.trim()
+  if (!name) {
+    // 教练名空着不能保存
+    ElMessage.warning('请填写当班教练姓名后再保存')
+    return
+  }
+  saving.value = true
+  const now = new Date()
+  const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const record: WaveOpenRecord = {
+    date: today,
+    levelCodes: openedLevels.value,
+    coachName: name,
+    savedAt: time
+  }
+  localStorage.setItem(WAVE_OPEN_STORAGE_KEY, JSON.stringify(record))
+  coachName.value = name
+  savedAt.value = time
+  saving.value = false
+  const levelNames = waveLevels.value
+    .filter((l) => openedLevels.value.includes(l.levelCode))
+    .map((l) => l.levelName)
+    .join('、')
+  ElMessage.success(`已记录今晚开浪档位（${levelNames}），当班教练：${name}`)
+}
 
 const fetchOverview = async () => {
   try {
@@ -136,6 +244,8 @@ const initChart = async () => {
 onMounted(() => {
   fetchOverview()
   fetchAdjustRecords()
+  fetchWaveLevels()
+  loadWaveOpenRecord()
   nextTick(() => {
     initChart()
   })
@@ -211,19 +321,67 @@ onMounted(() => {
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  
+
   .card-header {
     margin-bottom: 20px;
-    
+
     .card-title {
       font-size: 16px;
       font-weight: bold;
       color: #303133;
     }
   }
-  
+
   .chart-container {
     height: 300px;
+  }
+}
+
+.wave-open-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+
+    .card-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #303133;
+    }
+  }
+
+  .wave-open-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .wave-open-row {
+    display: flex;
+    align-items: center;
+
+    .row-label {
+      width: 70px;
+      flex-shrink: 0;
+      font-size: 14px;
+      color: #606266;
+    }
+
+    .level-checkbox-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .coach-input {
+      width: 220px;
+      margin-right: 12px;
+    }
   }
 }
 
