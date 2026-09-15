@@ -3,12 +3,15 @@ package com.surf.service;
 import com.surf.dto.EquipmentCreateDTO;
 import com.surf.dto.EquipmentUpdateDTO;
 import com.surf.entity.Equipment;
+import com.surf.entity.EquipmentWaveLevel;
 import com.surf.repository.EquipmentRepository;
+import com.surf.repository.EquipmentWaveLevelRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,8 +19,9 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class EquipmentService {
-    
+
     private final EquipmentRepository equipmentRepository;
+    private final EquipmentWaveLevelRepository equipmentWaveLevelRepository;
     
     @Transactional
     public Equipment createEquipment(EquipmentCreateDTO dto) {
@@ -75,6 +79,17 @@ public class EquipmentService {
                 .orElseThrow(() -> new IllegalArgumentException("设备不存在"));
         equipment.setStatus("DELETED");
         equipmentRepository.save(equipment);
+
+        // 停用当下摘掉档位：该设备仍生效的绑定同事务打上失效时间，
+        // 统计看板的档位台数/名单与绑定状态随即不再包含这台设备
+        List<EquipmentWaveLevel> activeBindings = equipmentWaveLevelRepository
+                .findAllByEquipmentIdAndExpireDateIsNull(id);
+        for (EquipmentWaveLevel binding : activeBindings) {
+            binding.setExpireDate(LocalDateTime.now());
+            equipmentWaveLevelRepository.save(binding);
+            log.info("Expired binding of disabled equipment {} on wave level {}",
+                    equipment.getEquipmentCode(), binding.getWaveLevelCode());
+        }
         log.info("Deleted equipment: {}", equipment.getEquipmentCode());
     }
     

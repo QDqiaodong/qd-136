@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -42,8 +43,9 @@ public class StatisticsService {
                 .findAll().stream()
                 .filter(b -> b.getExpireDate() == null)
                 .collect(Collectors.groupingBy(EquipmentWaveLevel::getWaveLevelCode));
-        
-        Map<Long, Equipment> equipmentMap = equipmentRepository.findAll().stream()
+
+        // 只取在用（ACTIVE）设备：已停用设备的绑定不进档位名单，也不进台数
+        Map<Long, Equipment> equipmentMap = equipmentRepository.findAllActive().stream()
                 .collect(Collectors.toMap(Equipment::getId, e -> e));
         
         for (WaveLevel waveLevel : waveLevels) {
@@ -97,16 +99,22 @@ public class StatisticsService {
     }
     
     public Integer getTotalEquipmentCount() {
-        return (int) equipmentRepository.count();
+        // 与设备管理列表口径一致：只算在册（ACTIVE）设备，已停用不计入
+        return equipmentRepository.findAllActive().size();
     }
-    
+
     public Integer getTotalWaveLevelCount() {
         return (int) waveLevelRepository.count();
     }
-    
+
     public Integer getTotalBindingCount() {
+        // 与绑定状态名单口径一致：只算设备仍在用的生效绑定
+        Set<Long> activeEquipmentIds = equipmentRepository.findAllActive().stream()
+                .map(Equipment::getId)
+                .collect(Collectors.toSet());
         return (int) equipmentWaveLevelRepository.findAll().stream()
                 .filter(b -> b.getExpireDate() == null)
+                .filter(b -> activeEquipmentIds.contains(b.getEquipmentId()))
                 .count();
     }
 }

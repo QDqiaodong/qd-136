@@ -42,6 +42,9 @@ public class EquipmentWaveLevelService {
     public EquipmentWaveLevel bindWaveLevel(WaveLevelBindingDTO dto) {
         Equipment equipment = equipmentRepository.findById(dto.getEquipmentId())
                 .orElseThrow(() -> new IllegalArgumentException("设备不存在"));
+        if (!"ACTIVE".equals(equipment.getStatus())) {
+            throw new IllegalArgumentException("设备已停用，不能绑定档位");
+        }
 
         WaveLevel waveLevel = waveLevelRepository.findByLevelCode(dto.getWaveLevelCode())
                 .orElseThrow(() -> new IllegalArgumentException("浪高档位不存在"));
@@ -90,6 +93,9 @@ public class EquipmentWaveLevelService {
     public EquipmentWaveLevel adjustWaveLevel(EquipmentAdjustDTO dto) {
         Equipment equipment = equipmentRepository.findById(dto.getEquipmentId())
                 .orElseThrow(() -> new IllegalArgumentException("设备不存在"));
+        if (!"ACTIVE".equals(equipment.getStatus())) {
+            throw new IllegalArgumentException("设备已停用，不能调整档位");
+        }
 
         WaveLevel newWaveLevel = waveLevelRepository.findByLevelCode(dto.getNewWaveLevelCode())
                 .orElseThrow(() -> new IllegalArgumentException("新浪高档位不存在"));
@@ -160,6 +166,10 @@ public class EquipmentWaveLevelService {
         // 教练查询非辅助设备 / 未授权档位的绑定一律拒绝，避免按 ID 探测
         accessControlService.assertCanViewEquipment(equipment.get());
 
+        // 已停用设备没有"当前生效绑定"，不再当成在用
+        if (!"ACTIVE".equals(equipment.get().getStatus())) {
+            return Optional.empty();
+        }
         Optional<EquipmentWaveLevel> binding =
                 equipmentWaveLevelRepository.findByEquipmentIdAndExpireDateIsNull(equipmentId);
         if (binding.isPresent()
@@ -175,7 +185,14 @@ public class EquipmentWaveLevelService {
         }
         List<EquipmentWaveLevel> bindings = equipmentWaveLevelRepository.findActiveByWaveLevelCode(waveLevelCode);
         Map<Long, Equipment> equipmentMap = loadEquipmentMap();
-        return accessControlService.filterBindings(bindings, equipmentMap);
+        // 已停用设备的绑定不再视为该档位上的在用设备
+        List<EquipmentWaveLevel> inServiceBindings = bindings.stream()
+                .filter(b -> {
+                    Equipment equipment = equipmentMap.get(b.getEquipmentId());
+                    return equipment != null && "ACTIVE".equals(equipment.getStatus());
+                })
+                .collect(Collectors.toList());
+        return accessControlService.filterBindings(inServiceBindings, equipmentMap);
     }
 
     public List<EquipmentWaveLevel> getBindingHistory(Long equipmentId) {
@@ -221,7 +238,8 @@ public class EquipmentWaveLevelService {
         List<BindingStatusDTO> result = new ArrayList<>();
         for (EquipmentWaveLevel binding : visibleBindings) {
             Equipment equipment = equipmentMap.get(binding.getEquipmentId());
-            if (equipment == null) {
+            // 已停用设备不再出现在绑定状态名单里，不再当成在用
+            if (equipment == null || !"ACTIVE".equals(equipment.getStatus())) {
                 continue;
             }
             result.add(BindingStatusDTO.builder()
